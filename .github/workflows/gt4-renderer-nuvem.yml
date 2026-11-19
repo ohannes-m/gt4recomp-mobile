@@ -1,0 +1,104 @@
+name: GT4 Note10S - renderer ARM64 (sem SDK local)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-renderer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      NDK_VERSION: '26.1.10909125'
+      ANDROID_API: '29'
+      BUILD_DIR: build/gt4gs-note10s
+    steps:
+      - name: Obter codigo-fonte da sua copia do repositorio
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Verificar que estamos no repositorio correto
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f tools/fetch_armsx2_shader_deps.py || { echo 'ERRO: este YAML precisa estar em um fork de moesuito/gt4recomp-mobile'; exit 2; }
+          test -f third_party/armsx2/platforms/android/app/src/main/cpp/CMakeLists.txt || { echo 'ERRO: fontes do renderizador nao encontradas'; exit 2; }
+          test -d android/armsx2gs || { echo 'ERRO: frontend Android nao encontrado'; exit 2; }
+
+      - name: Preparar CMake Ninja e Python
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cmake ninja-build python3 python3-pip pkg-config
+          cmake --version
+          ninja --version
+
+      - name: Instalar NDK especifico na maquina da nuvem
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          manager="$sdk/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$manager" || { echo "ERRO: sdkmanager nao encontrado em $manager"; exit 3; }
+          yes | "$manager" --licenses >/dev/null || true
+          "$manager" --install "ndk;$NDK_VERSION" "platforms;android-$ANDROID_API"
+          test -f "$sdk/ndk/$NDK_VERSION/build/cmake/android.toolchain.cmake"
+          echo "NDK_PATH=$sdk/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      - name: Baixar dependencias abertas dos shaders
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p logs
+          python3 tools/fetch_armsx2_shader_deps.py 2>&1 | tee logs/shader-deps.log
+
+      - name: Configurar renderer Mali ARM64 - Vulkan e OpenGL ES
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S third_party/armsx2/platforms/android/app/src/main/cpp \
+            -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$NDK_PATH/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM="android-$ANDROID_API" \
+            -DANDROID_STL=c++_static \
+            -DANDROID=true \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DUSE_VULKAN=ON -DUSE_OPENGL=ON \
+            -DENABLE_QT_UI=OFF -DENABLE_TESTS=OFF -DENABLE_GSRUNNER=OFF \
+            -DGT4GS_FRONTEND_DIR="$GITHUB_WORKSPACE/android/armsx2gs" \
+            2>&1 | tee logs/configure.log
+
+      - name: Compilar somente libgt4gs.so
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build "$BUILD_DIR" --target gt4gs --parallel 2 \
+            2>&1 | tee logs/build.log
+          mkdir -p output
+          binary="$(find "$BUILD_DIR" -type f -name 'libgt4gs.so' -print -quit)"
+          test -n "$binary" || { echo 'ERRO: build terminou mas libgt4gs.so nao foi localizada'; exit 4; }
+          cp "$binary" output/
+          file output/libgt4gs.so | tee output/identificacao.txt
+          printf '%s\n' 'Esta biblioteca e SOMENTE o renderizador, NAO e um jogo ou APK.' > output/LEIA.txt
+
+      - name: Baixar artefato da compilacao (se gerado)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gt4-renderer-arm64-vulkan-opengles
+          path: output/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Guardar logs mesmo se o build falhar
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gt4-build-logs
+          path: logs/
+          if-no-files-found: warn
+          retention-days: 7
