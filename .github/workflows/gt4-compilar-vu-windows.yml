@@ -1,0 +1,46 @@
+name: GT4 - Compilar recompiler VU (Windows)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-vu:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Baixar somente codigo publico GT4
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Baixar dependencias publicas (donor fixado)
+        shell: pwsh
+        run: |
+          git clone --no-checkout https://github.com/snuri00/ps2-web-recomp.git _donor
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          git -C _donor checkout 1b4808793a12c45125262fd2d5f50a9ec9f7c020
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          if (-not (Test-Path '_donor/runtime/include/ps2/vu_ops.hpp')) { throw 'Donor nao contem ps2/vu_ops.hpp' }
+      - name: Compilar ferramenta isolada com Visual Studio 2022
+        shell: cmd
+        run: |
+          for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath`) do set "VSROOT=%%i"
+          if not defined VSROOT ( echo VS2022 nao encontrado & exit /b 1 )
+          call "%VSROOT%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
+          if errorlevel 1 exit /b 1
+          if not exist tools\vu_recomp\src\vurecomp.cpp ( echo Fonte nao localizado & exit /b 1 )
+          mkdir dist
+          cl /nologo /std:c++20 /EHsc /O2 /utf-8 /I"tools\vu_recomp\src" /I"_donor\runtime\include" /I"_donor\runtime\src" tools\vu_recomp\src\vurecomp_main.cpp tools\vu_recomp\src\vurecomp.cpp tools\vu_recomp\src\sha256.cpp /Fe:dist\gt4_vu_recomp.exe
+          if errorlevel 1 exit /b 1
+          if not exist dist\gt4_vu_recomp.exe exit /b 1
+          git rev-parse HEAD > dist\gt4_commit.txt
+          git -C _donor rev-parse HEAD > dist\donor_commit.txt
+      - name: Publicar somente executavel, sem dados do jogo
+        uses: actions/upload-artifact@v4
+        with:
+          name: GT4-VU-Recompiler-Windows-x64
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
