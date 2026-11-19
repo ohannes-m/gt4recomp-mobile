@@ -21,6 +21,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Android SDK command-line tools
+        uses: android-actions/setup-android@v3
+
       - name: Prepare isolated diagnostic directory
         shell: bash
         run: |
