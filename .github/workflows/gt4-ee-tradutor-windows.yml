@@ -1,0 +1,76 @@
+name: GT4 - Compilar tradutor EE Windows (sem ISO)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-ee-translator:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Obter codigo publico do tradutor na revisao fixada
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $donor = Join-Path $env:RUNNER_TEMP 'ps2-web-recomp'
+          git clone --quiet https://github.com/snuri00/ps2-web-recomp.git "$donor"
+          if ($LASTEXITCODE -ne 0) { throw 'git clone falhou' }
+          git -C "$donor" checkout --detach 1b4808793a12c45125262fd2d5f50a9ec9f7c020
+          if ($LASTEXITCODE -ne 0) { throw 'git checkout falhou' }
+          $revision = (git -C "$donor" rev-parse HEAD).Trim()
+          if ($revision -ne '1b4808793a12c45125262fd2d5f50a9ec9f7c020') {
+            throw "Revisao incorreta: $revision"
+          }
+          Write-Host "Codigo publico revisao: $revision"
+
+      - name: Compilar eerecomp.exe usando MSVC
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $donor = Join-Path $env:RUNNER_TEMP 'ps2-web-recomp'
+          $src = Join-Path $env:RUNNER_TEMP 'ee-tradutor-src'
+          $build = Join-Path $env:RUNNER_TEMP 'ee-tradutor-build'
+          New-Item -ItemType Directory -Path $src -Force | Out-Null
+          $cmake = @'
+          cmake_minimum_required(VERSION 3.24)
+          project(GT4EETranslator LANGUAGES CXX)
+          set(CMAKE_CXX_STANDARD 20)
+          set(CMAKE_CXX_STANDARD_REQUIRED ON)
+          set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+          set(DONOR_PATH "" CACHE PATH "ps2-web-recomp checkout")
+          if(NOT EXISTS "${DONOR_PATH}/recomp/main.cpp")
+            message(FATAL_ERROR "Donor checkout nao encontrado")
+          endif()
+          add_executable(eerecomp
+            "${DONOR_PATH}/recomp/main.cpp"
+            "${DONOR_PATH}/recomp/r5900.cpp"
+            "${DONOR_PATH}/recomp/elf.cpp"
+            "${DONOR_PATH}/recomp/analysis.cpp"
+            "${DONOR_PATH}/recomp/codegen.cpp"
+            "${DONOR_PATH}/recomp/snr2.cpp")
+          if(MSVC)
+            target_compile_options(eerecomp PRIVATE /W3 /EHsc)
+          endif()
+          '@
+          Set-Content -LiteralPath (Join-Path $src 'CMakeLists.txt') -Value $cmake -Encoding UTF8
+          cmake -S "$src" -B "$build" -G 'Visual Studio 17 2022' -A x64 "-DDONOR_PATH=$donor"
+          if ($LASTEXITCODE -ne 0) { throw 'Configuracao do CMake falhou' }
+          cmake --build "$build" --config Release --target eerecomp --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'Compilacao eerecomp falhou' }
+          $exe = Join-Path $build 'Release/eerecomp.exe'
+          if (-not (Test-Path -LiteralPath $exe)) { throw 'eerecomp.exe nao encontrado' }
+          $dest = Join-Path $env:GITHUB_WORKSPACE 'dist'
+          New-Item -ItemType Directory -Path $dest -Force | Out-Null
+          Copy-Item -LiteralPath $exe -Destination (Join-Path $dest 'eerecomp.exe')
+          Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $dest 'eerecomp.exe') | Format-List
+
+      - name: Publicar somente o tradutor (nenhum arquivo do jogo)
+        uses: actions/upload-artifact@v4
+        with:
+          name: GT4-eerecomp-Windows-x64
+          path: dist/eerecomp.exe
+          if-no-files-found: error
+          retention-days: 7
