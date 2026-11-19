@@ -21,9 +21,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Android SDK command-line tools
-        uses: android-actions/setup-android@v3
-
       - name: Prepare isolated diagnostic directory
         shell: bash
         run: |
@@ -31,14 +28,17 @@ jobs:
           echo "This workflow uses ONLY public MIT donor code. No game image, translated EE units, VU output, keys, or private assets are uploaded." | tee dist/README.txt
           command -v cmake
           command -v ninja
-          command -v sdkmanager
+          find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print | tee dist/logs/sdkmanager-paths.txt
+          test -s dist/logs/sdkmanager-paths.txt
           echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
 
       - name: Install pinned Android NDK 26.1.10909125
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager --install "ndk;26.1.10909125" 2>&1 | tee dist/logs/sdkmanager.log
+          sdkmanager_bin="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -x "$sdkmanager_bin"
+          "$sdkmanager_bin" --install "ndk;26.1.10909125" 2>&1 | tee dist/logs/sdkmanager.log
           test -f "$ANDROID_HOME/ndk/26.1.10909125/build/cmake/android.toolchain.cmake"
           cat "$ANDROID_HOME/ndk/26.1.10909125/source.properties" | tee dist/logs/ndk-version.txt
 
