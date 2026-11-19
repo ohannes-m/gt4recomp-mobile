@@ -1,0 +1,109 @@
+name: GT4 - Step 8 public runtime Android ARM64 smoke
+
+on:
+  push:
+    branches:
+      - task/200-public-arm64-runtime-smoke
+    paths:
+      - .github/workflows/gt4-etapa8-runtime-arm64.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-arm64-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out public repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Prepare isolated diagnostic directory
+        shell: bash
+        run: |
+          mkdir -p dist/logs
+          echo "This workflow uses ONLY public MIT donor code. No game image, translated EE units, VU output, keys, or private assets are uploaded." | tee dist/README.txt
+          command -v cmake
+          command -v ninja
+          command -v sdkmanager
+          echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
+
+      - name: Install pinned Android NDK 26.1.10909125
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install "ndk;26.1.10909125" 2>&1 | tee dist/logs/sdkmanager.log
+          test -f "$ANDROID_HOME/ndk/26.1.10909125/build/cmake/android.toolchain.cmake"
+          cat "$ANDROID_HOME/ndk/26.1.10909125/source.properties" | tee dist/logs/ndk-version.txt
+
+      - name: Clone pinned public PS2 donor runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --no-checkout https://github.com/snuri00/ps2-web-recomp.git "$RUNNER_TEMP/ps2-web-recomp" 2>&1 | tee dist/logs/clone.log
+          git -C "$RUNNER_TEMP/ps2-web-recomp" checkout 1b4808793a12c45125262fd2d5f50a9ec9f7c020 2>&1 | tee -a dist/logs/clone.log
+          actual="$(git -C "$RUNNER_TEMP/ps2-web-recomp" rev-parse HEAD)"
+          test "$actual" = 1b4808793a12c45125262fd2d5f50a9ec9f7c020
+          printf '%s\n' "$actual" > dist/logs/donor-commit.txt
+
+      - name: Configure PS2 runtime for Android arm64-v8a
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S "$RUNNER_TEMP/ps2-web-recomp" \
+            -B "$RUNNER_TEMP/gt4-ps2runtime-arm64" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_HOME/ndk/26.1.10909125/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-29 \
+            -DANDROID_STL=c++_static -DPS2_GENERATED= \
+            2>&1 | tee dist/logs/configure.log
+
+      - name: Compile standalone PS2 runtime static library
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build "$RUNNER_TEMP/gt4-ps2runtime-arm64" \
+            --target ps2runtime --parallel 2 2>&1 | tee dist/logs/build.log
+
+      - name: Verify Android ARM64 object archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/gt4-ps2runtime-arm64/libps2runtime.a"
+          tool_dir="$ANDROID_HOME/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          test -s "$archive"
+          "$tool_dir/llvm-ar" t "$archive" | tee dist/logs/archive-members.txt
+          test "$(wc -l < dist/logs/archive-members.txt)" -ge 20
+          mkdir -p "$RUNNER_TEMP/object-probe"
+          (cd "$RUNNER_TEMP/object-probe" && "$tool_dir/llvm-ar" x "$archive")
+          obj="$(find "$RUNNER_TEMP/object-probe" -maxdepth 1 -name '*.o' -print -quit)"
+          test -n "$obj"
+          file "$obj" | tee dist/logs/object-architecture.txt
+          "$tool_dir/llvm-readelf" -h "$obj" | tee dist/logs/object-elf-header.txt
+          grep -E 'Machine:.*AArch64' dist/logs/object-elf-header.txt
+          cp "$archive" dist/libps2runtime-android-arm64.a
+          sha256sum dist/libps2runtime-android-arm64.a | tee dist/logs/archive-sha256.txt
+          printf 'PASS: Public PS2 runtime compiled for Android ARM64. This is NOT libgt4.so or a playable APK.\n' | tee dist/logs/result.txt
+
+      - name: Upload diagnostic logs even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GT4-Etapa8-ARM64-Logs
+          path: |
+            dist/README.txt
+            dist/logs/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload standalone public runtime archive
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GT4-Etapa8-PS2Runtime-ARM64-Public
+          path: dist/libps2runtime-android-arm64.a
+          if-no-files-found: error
+          retention-days: 7
