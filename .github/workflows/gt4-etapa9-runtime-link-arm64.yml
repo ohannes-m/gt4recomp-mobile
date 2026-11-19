@@ -1,0 +1,107 @@
+name: GT4 - Step 9 whole-runtime Android ARM64 link probe
+
+on:
+  push:
+    branches:
+      - task/200-public-arm64-runtime-smoke
+    paths:
+      - .github/workflows/gt4-etapa9-runtime-link-arm64.yml
+      - tools/arm64-runtime-probe/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  whole-runtime-arm64-link:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out public test harness
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Prepare public-only logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/logs
+          printf 'Only public donor sources and synthetic EE fixture. Not libgt4.so, not an APK, no private GT4 data.\n' | tee dist/README.txt
+
+      - name: Get Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager_bin="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -x "$sdkmanager_bin"
+          "$sdkmanager_bin" --install "ndk;26.1.10909125" 2>&1 | tee dist/logs/ndk-install.log
+          test -f "$ANDROID_HOME/ndk/26.1.10909125/build/cmake/android.toolchain.cmake"
+
+      - name: Clone exact public donor version
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --no-checkout https://github.com/snuri00/ps2-web-recomp.git "$RUNNER_TEMP/ps2-web-recomp" 2>&1 | tee dist/logs/donor-clone.log
+          git -C "$RUNNER_TEMP/ps2-web-recomp" checkout 1b4808793a12c45125262fd2d5f50a9ec9f7c020 2>&1 | tee -a dist/logs/donor-clone.log
+          actual="$(git -C "$RUNNER_TEMP/ps2-web-recomp" rev-parse HEAD)"
+          test "$actual" = 1b4808793a12c45125262fd2d5f50a9ec9f7c020
+          printf '%s\n' "$actual" > dist/logs/donor-commit.txt
+
+      - name: Configure Android shared-library smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S tools/arm64-runtime-probe -B "$RUNNER_TEMP/gt4-runtime-link-probe" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_HOME/ndk/26.1.10909125/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-29 -DANDROID_STL=c++_static \
+            -DGT4_PUBLIC_DONOR="$RUNNER_TEMP/ps2-web-recomp" \
+            2>&1 | tee dist/logs/configure.log
+
+      - name: Compile and link complete public runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build "$RUNNER_TEMP/gt4-runtime-link-probe" --target gt4_runtime_probe --parallel 2 \
+            2>&1 | tee dist/logs/build-and-link.log
+
+      - name: Verify real Android AArch64 shared object
+        shell: bash
+        run: |
+          set -euo pipefail
+          lib="$RUNNER_TEMP/gt4-runtime-link-probe/libgt4_runtime_probe.so"
+          tool_dir="$ANDROID_HOME/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          test -s "$lib"
+          "$tool_dir/llvm-readelf" -h "$lib" | tee dist/logs/elf-header.txt
+          grep -E 'Type:.*DYN' dist/logs/elf-header.txt
+          grep -E 'Machine:.*AArch64' dist/logs/elf-header.txt
+          "$tool_dir/llvm-readelf" --dyn-syms "$lib" | tee dist/logs/dynamic-symbols.txt
+          for symbol in gt4_public_probe_version gt4_public_probe_dispatch gt4_public_probe_ram_size; do
+            grep -Eq "FUNC.*$symbol$" dist/logs/dynamic-symbols.txt
+          done
+          "$tool_dir/llvm-readelf" -lW "$lib" | tee dist/logs/segments.txt
+          "$tool_dir/llvm-readelf" -d "$lib" | tee dist/logs/dynamic-dependencies.txt
+          cp "$lib" dist/libgt4_runtime_probe.so
+          sha256sum dist/libgt4_runtime_probe.so | tee dist/logs/sha256.txt
+          printf 'PASS: full public runtime linked into AArch64 Android shared ELF with synthetic EE dispatch (not GT4).\n' | tee dist/logs/result.txt
+
+      - name: Upload logs (also if build fails)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GT4-Etapa9-ARM64-Link-Logs
+          path: |
+            dist/README.txt
+            dist/logs/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload public integration probe (not a game)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GT4-Etapa9-Public-Runtime-Link-Probe
+          path: dist/libgt4_runtime_probe.so
+          if-no-files-found: error
+          retention-days: 7
