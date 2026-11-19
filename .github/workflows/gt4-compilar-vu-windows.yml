@@ -11,36 +11,67 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 45
     steps:
-      - name: Baixar somente codigo publico GT4
+      - name: Obter codigo publico do GT4
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Baixar dependencias publicas (donor fixado)
+
+      - name: Obter dependencias publicas fixadas
         shell: pwsh
         run: |
           git clone --no-checkout https://github.com/snuri00/ps2-web-recomp.git _donor
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao clonar ps2-web-recomp" }
           git -C _donor checkout 1b4808793a12c45125262fd2d5f50a9ec9f7c020
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          if (-not (Test-Path '_donor/runtime/include/ps2/vu_ops.hpp')) { throw 'Donor nao contem ps2/vu_ops.hpp' }
-      - name: Compilar ferramenta isolada com Visual Studio 2022
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao selecionar commit do donor" }
+          if (-not (Test-Path '_donor/runtime/include/ps2/vu_ops.hpp')) {
+            throw "Arquivo ps2/vu_ops.hpp nao localizado no donor"
+          }
+
+      - name: Compilar VU com Clang-CL (e salvar diagnostico)
         shell: cmd
         run: |
-          for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath`) do set "VSROOT=%%i"
-          if not defined VSROOT ( echo VS2022 nao encontrado & exit /b 1 )
+          @echo on
+          if not exist dist mkdir dist
+          if not exist tools\vu_recomp\src\vurecomp.cpp ( echo Erro - vurecomp.cpp ausente > dist\build-output.txt & exit /b 1 )
+          set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+          if not exist "%VSWHERE%" ( echo Erro - vswhere.exe ausente > dist\build-output.txt & exit /b 1 )
+          for /f "usebackq delims=" %%I in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSROOT=%%I"
+          if not defined VSROOT ( echo Erro - Visual Studio C++ nao encontrado > dist\build-output.txt & exit /b 1 )
           call "%VSROOT%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
-          if errorlevel 1 exit /b 1
-          if not exist tools\vu_recomp\src\vurecomp.cpp ( echo Fonte nao localizado & exit /b 1 )
-          mkdir dist
-          cl /nologo /std:c++20 /EHsc /O2 /utf-8 /I"tools\vu_recomp\src" /I"_donor\runtime\include" /I"_donor\runtime\src" tools\vu_recomp\src\vurecomp_main.cpp tools\vu_recomp\src\vurecomp.cpp tools\vu_recomp\src\sha256.cpp /Fe:dist\gt4_vu_recomp.exe
-          if errorlevel 1 exit /b 1
-          if not exist dist\gt4_vu_recomp.exe exit /b 1
+          if errorlevel 1 ( echo Erro - VsDevCmd falhou > dist\build-output.txt & exit /b 1 )
+          set "CLANG_EXE=C:\Program Files\LLVM\bin\clang-cl.exe"
+          if not exist "%CLANG_EXE%" set "CLANG_EXE=%VSROOT%\VC\Tools\Llvm\bin\clang-cl.exe"
+          if not exist "%CLANG_EXE%" ( echo Erro - clang-cl.exe ausente > dist\build-output.txt & exit /b 1 )
+          "%CLANG_EXE%" --version > dist\compiler-version.txt 2>&1
+          echo Iniciando compilacao com Clang-CL...
+          "%CLANG_EXE%" /nologo /std:c++20 /EHsc /O2 /utf-8 /I"tools\vu_recomp\src" /I"_donor\runtime\include" /I"_donor\runtime\src" tools\vu_recomp\src\vurecomp_main.cpp tools\vu_recomp\src\vurecomp.cpp tools\vu_recomp\src\sha256.cpp /Fe:dist\gt4_vu_recomp.exe > dist\build-output.txt 2>&1
+          set "BUILD_EXIT=%ERRORLEVEL%"
+          type dist\build-output.txt
+          if not "%BUILD_EXIT%"=="0" ( echo Compilacao falhou, veja artifact GT4-VU-Diagnostico & exit /b %BUILD_EXIT% )
+          if not exist dist\gt4_vu_recomp.exe ( echo Erro - executavel nao foi criado >> dist\build-output.txt & exit /b 1 )
           git rev-parse HEAD > dist\gt4_commit.txt
           git -C _donor rev-parse HEAD > dist\donor_commit.txt
-      - name: Publicar somente executavel, sem dados do jogo
+          echo Compilacao concluida com sucesso.
+
+      - name: Publicar diagnostico (inclusive se falhar)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GT4-VU-Diagnostico
+          path: |
+            dist/build-output.txt
+            dist/compiler-version.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Publicar executavel compilado
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: GT4-VU-Recompiler-Windows-x64
-          path: dist/
+          path: |
+            dist/gt4_vu_recomp.exe
+            dist/gt4_commit.txt
+            dist/donor_commit.txt
           if-no-files-found: error
           retention-days: 7
