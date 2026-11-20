@@ -30,6 +30,12 @@ DERIVATIONS = (
     ("slice376-frame-render-license-guard-runtime", "prepare_license_guard.py",
      ("--display-aspect", "--frame-counters", "--frame-skip"),
      "slice376-frame-render-license-guard-runtime.json", None),
+    ("slice200-memcard-runtime", "prepare_memcard_flush.py",
+     (), None, "sio2.cpp"),
+    ("slice365-ipu-fast-runtime", "prepare_ipu_fast.py",
+     (), None, "ipu.cpp"),
+    ("slice396-spu2-runtime", "prepare_spu2_runtime.py",
+     (), None, "spu2.cpp"),
 )
 
 
@@ -60,7 +66,7 @@ def verified_donor(assets_root: pathlib.Path) -> pathlib.Path:
 
 
 def derive(assets_root: pathlib.Path, name: str, script: str, flags: tuple[str, ...],
-           manifest: str, field: str | None) -> None:
+           manifest: str | None, field: str | None) -> None:
     output = assets_root / "private" / name
     if output.exists():
         raise ValueError(f"refusing to overwrite existing private capsule {name}")
@@ -68,10 +74,22 @@ def derive(assets_root: pathlib.Path, name: str, script: str, flags: tuple[str, 
     command = [sys.executable, str(REPO / "scripts" / script),
                str(output), "--assets-root", str(assets_root), *flags]
     subprocess.run(command, check=True, stdout=subprocess.DEVNULL, timeout=120)
-    pinned = json.loads((REPO / "docs" / "inputs" / manifest).read_text(encoding="utf-8"))
+    if manifest is None:
+        # The smaller IPU/SPU2/memory-card tools are pinned to exact donor
+        # hashes and produce a receipt listing their source hash.
+        receipt = json.loads((output / "runtime.json").read_text(encoding="utf-8"))
+        if field is None:
+            raise ValueError(f"{name}: missing source key")
+        base = output / field
+        key = field.partition(".")[0] + "_sha256"
+        if not base.is_file() or sha256(base) != receipt[key]:
+            raise ValueError(f"{name}: generated source does not match its receipt")
+        print(f"PUBLIC_RUNTIME_RECEIPT_PASS {name} (1 pinned-donor derived source)")
+        return
 
-    if field is not None:
-        expected_sources = pinned["inputs"][field]
+    pinned = json.loads((REPO / "docs" / "inputs" / manifest).read_text(encoding="utf-8"))
+    if field == "PORT":
+        expected_sources = pinned["inputs"]["PORT"]
     else:
         expected_sources = pinned["source_sha256"]
 
@@ -99,11 +117,21 @@ def main() -> int:
     assets_root = options.assets_root.expanduser().resolve()
     try:
         verified_donor(assets_root)
-        for name, script, flags, manifest, field in DERIVATIONS:
+    except (ValueError, OSError, subprocess.CalledProcessError) as exc:
+        print(f"PUBLIC_RUNTIME_PIN_FAIL donor: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+
+    failed = []
+    for name, script, flags, manifest, field in DERIVATIONS:
+        try:
             derive(assets_root, name, script, flags, manifest, field)
-    except (ValueError, OSError, subprocess.CalledProcessError,
-            subprocess.TimeoutExpired, KeyError, json.JSONDecodeError) as exc:
-        print(f"PUBLIC_RUNTIME_PIN_FAIL {type(exc).__name__}: {exc}", file=sys.stderr)
+        except (ValueError, OSError, subprocess.CalledProcessError,
+                subprocess.TimeoutExpired, KeyError, json.JSONDecodeError) as exc:
+            failed.append(name)
+            print(f"PUBLIC_RUNTIME_PIN_FAIL {name}: {type(exc).__name__}: {exc}", file=sys.stderr)
+    if failed:
+        print(f"PUBLIC_RUNTIME_BLOCKED {len(failed)}/{len(DERIVATIONS)} derivations failed: {', '.join(failed)}",
+              file=sys.stderr)
         return 2
     print("PUBLIC_RUNTIME_RECONSTRUCTION_PASS")
     return 0
