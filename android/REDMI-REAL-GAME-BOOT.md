@@ -7,6 +7,32 @@
 - O driver PanVK r10 dos APKs de diagnostico NAO esta integrado a libgt4.so ou a apresentacao do jogo. Os testes do cubo e do alpha blending nao comprovam boot.
 - Nao repetir testes genericos de GPU. Proxima verificacao no aparelho: tentar iniciar o GT4 em um APK com libgt4.so + libgt4gs.so reais.
 
+## Marco atual: runtime publico reproduzivel (2026-11-20)
+
+O runtime MIT de `snuri00/ps2-web-recomp` foi reproduzido no commit fixado
+`1b4808793a12c45125262fd2d5f50a9ec9f7c020`, sem codigo do jogo:
+
+- `slice200-port`: adaptador grafico derivado e uma **nova variante Android** de `main.cpp`, com
+  hash proprio em `docs/inputs/android-redmi-public-port-main.json`;
+- `slice262-frame-cost-runtime`: sete fontes verificadas contra o manifesto;
+- `slice376-frame-render-license-guard-runtime`: tres fontes verificadas;
+- `slice200-memcard-runtime`, `slice365-ipu-fast-runtime`, `slice396-spu2-runtime`:
+  derivados dos arquivos do donor publicamente fixado, conferidos com seus recibos.
+
+O job Linux compilou sintaticamente o `main.cpp` com Clang/C++20; no Windows, o
+`android/preparar-runtime-publico.cmd` executou duas vezes sem sobrescrever
+capsulas existentes. **Isso nao e uma compilacao ARM64 nem a execucao do GT4.**
+A variante Android mantem os hashes das outras tres fontes do port historico.
+
+No Windows, quando os requisitos publicos forem necessarios, `android\preparar-runtime-publico.cmd`
+faz o checkout fixado via Git e deriva os seis grupos em `private/`. So baixa
+codigo publico, nao le ISO, ELF, EE ou VU, nao publica arquivo algum e nao instala
+programas no celular. A execucao nao recria fontes existentes que ja estejam corretas.
+
+Ainda faltam o conjunto de shaders CoreGS em C++, SDL3 Android, SDK/NDK, ferramentas
+do launcher, e **compilar e testar o jogo real** com o pacote privado EE/VU.
+Nao tratar a reproducao de runtime como prova de jogabilidade.
+
 ## Passo 1: confirmar os insumos reais no Windows, offline
 
 Num clone deste repositorio, use os caminhos que realmente existirem no seu PC; os exemplos de C:\Antigravity sao do ambiente de outra construcao e NAO devem ser assumidos.
