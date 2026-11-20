@@ -5,6 +5,7 @@ on:
     branches: [task/215-redmi-gt4-native-boot]
     paths:
       - tools/redmi_boot_preflight.py
+      - tools/verify_public_runtime_capsules.py
       - tests/python/test_redmi_boot_preflight.py
       - android/redmi-native.cmd
       - android/native/configure-android.cmd
@@ -125,3 +126,37 @@ jobs:
           # GitHub pwsh propagates the previous expected native exit code
           # unless we explicitly end the validating script successfully.
           exit 0
+
+  public-runtime:
+    name: Regenerate public donor PS2 runtime and verify exact SHA-256 pins
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout clean pinned MIT PS2 donor without game data
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p private/references/ps2-web-recomp
+          git -C private/references/ps2-web-recomp init -q
+          git -C private/references/ps2-web-recomp remote add origin https://github.com/snuri00/ps2-web-recomp.git
+          git -C private/references/ps2-web-recomp fetch --filter=blob:none --depth=1 origin 1b4808793a12c45125262fd2d5f50a9ec9f7c020
+          git -C private/references/ps2-web-recomp checkout -q --detach FETCH_HEAD
+          test "$(git -C private/references/ps2-web-recomp rev-parse HEAD)" = "1b4808793a12c45125262fd2d5f50a9ec9f7c020"
+          test -z "$(git -C private/references/ps2-web-recomp status --porcelain --untracked-files=all)"
+      - name: Derive runtime components and verify immutable source and receipt pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/verify_public_runtime_capsules.py
+          python3 tools/verify_public_runtime_capsules.py
+      - name: Reject game-derived inputs and binary artifact publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -f private/SCUS_973.28.elf
+          test ! -f private/gt4.iso
+          test ! -f libgt4.so
+          echo "ONLY_PUBLIC_RUNTIME_PINNED_SOURCES_VALIDATED"
