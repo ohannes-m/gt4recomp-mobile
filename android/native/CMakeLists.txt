@@ -112,6 +112,19 @@ math(EXPR port_last "${port_count} - 1")
 foreach(index RANGE 0 ${port_last})
     string(JSON port_name MEMBER "${perf_manifest}" inputs PORT ${index})
     string(JSON expected GET "${perf_manifest}" inputs PORT "${port_name}")
+    # TASK-215: the Android host entry is an independently reviewed MIT-only
+    # variant of slice200 main.cpp: --portable-check and headless card flush.
+    # All other port sources keep their historical slice200 SHA-256 pins.
+    # This does NOT bypass the original pin; the Android-only variant has its
+    # own exact documented hash, reproduced on CI from the pinned donor.
+    if(port_name STREQUAL "main.cpp")
+        file(READ "${GT4_ROOT}/docs/inputs/android-redmi-public-port-main.json" android_entry_manifest)
+        string(JSON expected GET "${android_entry_manifest}" source_sha256)
+        string(JSON android_donor GET "${android_entry_manifest}" donor_commit)
+        if(NOT android_donor STREQUAL donor_head)
+            message(FATAL_ERROR "Android host main pin targets another donor revision")
+        endif()
+    endif()
     gt4_require_sha256("${PORT}/${port_name}" "${expected}" "donor adapter (port)")
 endforeach()
 
