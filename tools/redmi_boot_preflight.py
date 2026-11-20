@@ -12,6 +12,8 @@ never commit ISOs, rebuilt ELF, generated EE/VU, game-derived capsules, or keys.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -61,6 +63,78 @@ def default_vulkan() -> Path | None:
     if sdk:
         return arg_path(str(Path(sdk) / "Include"))
     return None
+
+
+# These are PUBLIC input pins from scripts/camera360_units.py (v200), not
+# hashes extracted from a user's uploaded game. An EE set may instead be
+# already hooked, in which case its private rc14b manifest is authoritative.
+EE_HOOK_INPUT_PINS = {
+    "unit_0091.cpp": "ebfeb6c44925658acad222f8495875acba0ae0cf66478d664d84a8028c4ce280",
+    "unit_0045.cpp": "f63e461a05ca26799a443a1323e5ef26fd1b7e1dd97283a3b4361ad9090e449f",
+    "unit_009E.cpp": "b098efefef5b4572b2c8cac6f04c53232499db9e960963c6803e8c2ecdf6a525",
+    "unit_00CE.cpp": "43eeeea1c396a34ecb0c9818023cf2566f1ad2de0bddd5bde7d6431087c4e2b0",
+    "unit_00BB.cpp": "7b430cfccf3e8811ea7dfdb35744ecc4c8911fc1078845b13283222d899a5298",
+    "unit_00E4.cpp": "2b461f117174664dd2f8402f6f91738de48f18fe2cf4f40bf67b5c27e3044f09",
+}
+
+
+def sha256_file(path: Path) -> str:
+    """Read one local C++ unit only, never an ISO, ELF, save or key."""
+    digest = hashlib.sha256()
+    with path.open("rb") as src:
+        for chunk in iter(lambda: src.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def check_hook_ee(r: "Report", units: Path, manifest: Path | None) -> None:
+    """Fail closed if the translated EE set cannot be used by rc14b.
+
+    The camera360 hook builder expects the six pinned *input* units; the
+    Android compiler expects six hooked units pinned by the private manifest.
+    A different-but-complete EE set, such as a base producer inventory, may
+    not be substituted without re-generating the correct runtime inputs.
+    """
+    if manifest is not None and manifest.is_file():
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+            entries = data["units"]
+            checks = {
+                row["unit"]: row["sha256_after"]
+                for row in entries
+                if row["unit"] in EE_HOOK_INPUT_PINS
+            }
+            if set(checks) != set(EE_HOOK_INPUT_PINS):
+                raise ValueError("manifest does not list six pinned EE hooks")
+            wrong = [
+                name for name, digest in checks.items()
+                if not (units / name).is_file()
+                or sha256_file(units / name) != digest
+            ]
+            r.record("EE com hooks Android (rc14b)", not wrong,
+                     f"{len(wrong)} unidades nao conferem com o manifesto" if wrong
+                     else "seis unidades conferem com hooks do manifesto")
+            return
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            r.record("EE com hooks Android (rc14b)", False,
+                     f"manifesto nao pode ser validado: {type(exc).__name__}")
+            return
+
+    missing = [
+        name for name in EE_HOOK_INPUT_PINS if not (units / name).is_file()
+    ]
+    if missing:
+        r.record("EE para gerador de hooks", False,
+                 f"{len(missing)} arquivos originais ausentes")
+        return
+    mismatched = sum(
+        sha256_file(units / name) != expected
+        for name, expected in EE_HOOK_INPUT_PINS.items()
+    )
+    r.record("EE para gerador de hooks", mismatched == 0,
+             ("seis entradas pinadas, prontas para camera360_units.py"
+              if mismatched == 0 else
+              f"{mismatched}/6 entradas diferem dos pins; nao aplicar hooks automaticamente"))
 
 
 class Report:
@@ -144,6 +218,8 @@ def check_private(r: Report, root: Path, units: Path | None,
         r.record("Unidades EE recompiladas", okay,
                  f"{count} unit_*.cpp" if okay
                  else f"{count} unit_*.cpp; esperado >=300, table.cpp e units.hpp")
+        if okay:
+            check_hook_ee(r, units, manifest)
 
     shader_count = len(list(shaders.glob("*_spirv.cpp"))) if shaders and shaders.is_dir() else 0
     r.record("Shaders CoreGS em C++", shader_count > 0,
