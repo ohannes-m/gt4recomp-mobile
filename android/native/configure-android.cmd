@@ -28,23 +28,23 @@ if not defined GT4_VU1_GENERATED_DIR set "GT4_VU1_GENERATED_DIR=%GT4_ASSETS_ROOT
 if not defined GT4_VU0_GENERATED_DIR set "GT4_VU0_GENERATED_DIR=%GT4_ASSETS_ROOT%/private/slice394-v200-vu0-gen"
 set "A=%GT4_ASSETS_ROOT%"
 cmake -S "%~dp0." -B "%OUT%" -G Ninja -DCMAKE_BUILD_TYPE=Release ^
- -DCMAKE_TOOLCHAIN_FILE="%GT4_ANDROID_NDK%\build\cmake\android.toolchain.cmake" ^
+ "-DCMAKE_TOOLCHAIN_FILE=%GT4_ANDROID_NDK%\build\cmake\android.toolchain.cmake" ^
  -DANDROID_ABI=%ABI% -DANDROID_PLATFORM=android-29 -DANDROID_STL=c++_static ^
  "-DCMAKE_C_FLAGS_RELEASE=-O2 -DNDEBUG" "-DCMAKE_CXX_FLAGS_RELEASE=-O2 -DNDEBUG" ^
- -DGT4_ASSETS_ROOT=%A% -DGT4_TARGET=v200 ^
- -DGT4_EE_UNITS_DIR=%GT4_EE_UNITS_DIR% -DGT4_EE_UNITS_MANIFEST=%GT4_EE_UNITS_MANIFEST% ^
- -DGT4_PORT_DIR=%A%/private/slice200-port ^
- -DGT4_PERF_RUNTIME_SOURCE=%A%/private/slice262-frame-cost-runtime ^
- -DGT4_LICENSE_GUARD_SOURCE=%A%/private/slice376-frame-render-license-guard-runtime ^
- -DGT4_MEMCARD_RUNTIME_SOURCE=%A%/private/slice200-memcard-runtime ^
- -DGT4_IPU_RUNTIME_SOURCE=%A%/private/slice365-ipu-fast-runtime ^
- -DGT4_SPU2_RUNTIME_SOURCE=%A%/private/slice396-spu2-runtime ^
+ "-DGT4_ASSETS_ROOT=%A%" -DGT4_TARGET=v200 ^
+ "-DGT4_EE_UNITS_DIR=%GT4_EE_UNITS_DIR%" "-DGT4_EE_UNITS_MANIFEST=%GT4_EE_UNITS_MANIFEST%" ^
+ "-DGT4_PORT_DIR=%A%/private/slice200-port" ^
+ "-DGT4_PERF_RUNTIME_SOURCE=%A%/private/slice262-frame-cost-runtime" ^
+ "-DGT4_LICENSE_GUARD_SOURCE=%A%/private/slice376-frame-render-license-guard-runtime" ^
+ "-DGT4_MEMCARD_RUNTIME_SOURCE=%A%/private/slice200-memcard-runtime" ^
+ "-DGT4_IPU_RUNTIME_SOURCE=%A%/private/slice365-ipu-fast-runtime" ^
+ "-DGT4_SPU2_RUNTIME_SOURCE=%A%/private/slice396-spu2-runtime" ^
  "-DGT4_VU1_GENERATED_DIR=%GT4_VU1_GENERATED_DIR%" ^
  "-DGT4_VU0_GENERATED_DIR=%GT4_VU0_GENERATED_DIR%" ^
- -DGT4_HW_SHADER_CPP_DIR=%GT4_HW_SHADER_CPP_DIR% ^
- -DGT4_VULKAN_INCLUDE=%GT4_VULKAN_INCLUDE% ^
- -DGT4_SDL3_ANDROID_AAR_DIR=%A%/private/tooling/sdl3-3.4.18-android/aar ^
- -DGT4_PYTHON=%A%/private/tooling-venv/Scripts/python.exe
+ "-DGT4_HW_SHADER_CPP_DIR=%GT4_HW_SHADER_CPP_DIR%" ^
+ "-DGT4_VULKAN_INCLUDE=%GT4_VULKAN_INCLUDE%" ^
+ "-DGT4_SDL3_ANDROID_AAR_DIR=%A%/private/tooling/sdl3-3.4.18-android/aar" ^
+ "-DGT4_PYTHON=%A%/private/tooling-venv/Scripts/python.exe"
 if errorlevel 1 exit /b 1
 if "%~3"=="" (cmake --build "%OUT%" -- -k 0) else (cmake --build "%OUT%" --target %~3 -- -k 0)
 exit /b %errorlevel%
