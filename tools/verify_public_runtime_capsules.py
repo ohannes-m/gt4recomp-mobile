@@ -82,19 +82,22 @@ def verified_donor(assets_root: pathlib.Path) -> pathlib.Path:
 
 
 def derive(assets_root: pathlib.Path, name: str, script: str, flags: tuple[str, ...],
-           manifest: str | None, field: str | None) -> None:
+           manifest: str | None, field: str | None,
+           reuse_existing: bool = False) -> None:
     output = assets_root / "private" / name
     if output.exists():
-        raise ValueError(f"refusing to overwrite existing private capsule {name}")
-
-    command = [sys.executable, str(REPO / "scripts" / script),
-               str(output), "--assets-root", str(assets_root), *flags]
-    subprocess.run(command, check=True, stdout=subprocess.DEVNULL, timeout=120)
-    if field == "PORT":
-        subprocess.run([
-            sys.executable, str(REPO / "scripts" / "prepare_android_port_main.py"),
-            str(output), "--assets-root", str(assets_root),
-        ], check=True, timeout=120)
+        if not reuse_existing or not output.is_dir():
+            raise ValueError(f"refusing to overwrite existing private capsule {name}")
+        # In check-only mode the source is never regenerated or altered.
+    else:
+        command = [sys.executable, str(REPO / "scripts" / script),
+                   str(output), "--assets-root", str(assets_root), *flags]
+        subprocess.run(command, check=True, stdout=subprocess.DEVNULL, timeout=120)
+        if field == "PORT":
+            subprocess.run([
+                sys.executable, str(REPO / "scripts" / "prepare_android_port_main.py"),
+                str(output), "--assets-root", str(assets_root),
+            ], check=True, timeout=120)
     if manifest is None:
         # The smaller IPU/SPU2/memory-card tools are pinned to exact donor
         # hashes and produce a receipt listing their source hash.
@@ -138,6 +141,8 @@ def derive(assets_root: pathlib.Path, name: str, script: str, flags: tuple[str, 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--assets-root", type=pathlib.Path, default=REPO)
+    parser.add_argument("--reuse-existing", action="store_true",
+                        help="Check previously generated capsules without overwriting any file")
     options = parser.parse_args()
     assets_root = options.assets_root.expanduser().resolve()
     try:
@@ -149,7 +154,8 @@ def main() -> int:
     failed = []
     for name, script, flags, manifest, field in DERIVATIONS:
         try:
-            derive(assets_root, name, script, flags, manifest, field)
+            derive(assets_root, name, script, flags, manifest, field,
+                   reuse_existing=options.reuse_existing)
         except (ValueError, OSError, subprocess.CalledProcessError,
                 subprocess.TimeoutExpired, KeyError, json.JSONDecodeError) as exc:
             failed.append(name)
