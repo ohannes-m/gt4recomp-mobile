@@ -41,6 +41,9 @@ if /I not "%~1"=="--build-native" (
 )
 
 echo.
+rem Limit parallel compilation: 326 generated C++ units can exhaust RAM.
+rem A user can override CMAKE_BUILD_PARALLEL_LEVEL explicitly.
+if not defined CMAKE_BUILD_PARALLEL_LEVEL set "CMAKE_BUILD_PARALLEL_LEVEL=1"
 echo Construindo o runtime REAL ARM64: EE + VU + IOP + CoreGS ...
 call android\native\configure-android.cmd arm64-v8a build\redmi-arm64
 if errorlevel 1 (
