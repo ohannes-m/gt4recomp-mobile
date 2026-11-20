@@ -53,9 +53,14 @@ para a receita oficial. Ele nao executa ADB, nao instala apps e nao envia arquiv
 ### Bloqueios restantes
 
 Os C++ privados reunidos **nao** incluem o checkout pinado de `private/references/ps2-web-recomp`,
-as capsulas adaptadas do runtime de PS2/IOP (PORT, performance, guarda de licenca, memory card,
-IPU, SPU2), o SDK/NDK, SDL3 3.4.18 nem os shaders CoreGS C++. Esses requisitos sao independentes
-dos arquivos EE/VU e nao podem ser inventados ou substituidos por um APK falso.
+nem as capsulas adaptadas do runtime, SDK/NDK, SDL3 3.4.18 ou shaders CoreGS C++.
+
+As **seis derivacoes publicas** (PORT, performance, guarda de licenca, memory card, IPU, SPU2)
+agora podem ser construidas e verificadas localmente com `android\\preparar-runtime-publico.cmd`.
+O CI Linux e Windows passou na geracao do material MIT, mas os arquivos nao aparecem
+automaticamente no ZIP do GitHub: continuam sendo gerados em `private/` no PC.
+Esse marco nao substitui as ferramentas, os shaders nem a ligacao funcional EE/VU/runtime
+e tampouco produz APK.
 
 No Android, o CMake confere hashes do manifesto EE e das capsulas antes da compilacao; o script
 de integracao nao remove nem contorna essas verificacoes.
