@@ -24,7 +24,14 @@ function CountSources([string]$Folder, [string]$Pattern) {
 
 $Desktop = [Environment]::GetFolderPath("Desktop")
 if ([string]::IsNullOrWhiteSpace($PrivateRoot)) {
-    $PrivateRoot = Join-Path $Desktop "verificação iso\GT4_PRIVADO_NAO_PUBLICAR\GT4_RECOMP_PRIVADO"
+    # The original folder was named "verificacao iso" with accents on many
+    # Windows installations. Discover it by a Unicode-safe prefix wildcard.
+    $extractionFolder = FirstNewestFolder $Desktop "verifica* iso"
+    if ($extractionFolder) {
+        $PrivateRoot = Join-Path $extractionFolder "GT4_PRIVADO_NAO_PUBLICAR\GT4_RECOMP_PRIVADO"
+    } else {
+        $PrivateRoot = Join-Path $Desktop "GT4_PRIVADO_NAO_PUBLICAR\GT4_RECOMP_PRIVADO"
+    }
 }
 $PrivateRoot = [System.IO.Path]::GetFullPath($PrivateRoot)
 
@@ -42,7 +49,10 @@ if ($elfOk) {
 
 $eeFolder = FirstNewestFolder (Join-Path $PrivateRoot "GT4_PRIVADO_NAO_PUBLICAR") "GT4_CPP_*"
 $eeCount = CountSources $eeFolder "unit_*.cpp"
-$eeOk = $eeCount -ge 326 -and (ExistsFile (Join-Path $eeFolder "table.cpp")) -and (ExistsFile (Join-Path $eeFolder "units.hpp"))
+$eeOk = $false
+if ($eeFolder) {
+    $eeOk = $eeCount -ge 326 -and (ExistsFile (Join-Path $eeFolder "table.cpp")) -and (ExistsFile (Join-Path $eeFolder "units.hpp"))
+}
 if ($eeOk) {
     Write-Output "EE: ENCONTRADO ($eeCount unidades C++ + table.cpp + units.hpp)"
 } else {
@@ -55,8 +65,10 @@ $vu0 = if ($vuRun) { Join-Path $vuRun "VU0" } else { $null }
 $vu1 = if ($vuRun) { Join-Path $vuRun "VU1" } else { $null }
 $vu0Count = CountSources $vu0 "*.cpp"
 $vu1Count = CountSources $vu1 "*.cpp"
-$vu0Ok = $vu0Count -ge 1 -and (ExistsFile (Join-Path $vu0 "manifest.json"))
-$vu1Ok = $vu1Count -ge 129 -and (ExistsFile (Join-Path $vu1 "manifest.json"))
+$vu0Ok = $false
+$vu1Ok = $false
+if ($vu0) { $vu0Ok = $vu0Count -ge 1 -and (ExistsFile (Join-Path $vu0 "manifest.json")) }
+if ($vu1) { $vu1Ok = $vu1Count -ge 129 -and (ExistsFile (Join-Path $vu1 "manifest.json")) }
 if ($vu0Ok) { Write-Output "VU0: ENCONTRADO ($vu0Count fontes C++)" }
 else { Write-Output "VU0: NAO ENCONTRADO OU INCOMPLETO ($vu0Count fontes)" }
 if ($vu1Ok) { Write-Output "VU1: ENCONTRADO ($vu1Count fontes C++)" }
