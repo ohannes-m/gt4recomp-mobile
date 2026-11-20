@@ -122,12 +122,13 @@ def check_private(r: Report, root: Path, units: Path | None,
         r.files(f"Capsula: {label}", private / folder, files)
 
     for label, (folder, prefix) in VU_DIRS.items():
-        folder_path = private / folder
+        env_name = "GT4_VU1_GENERATED_DIR" if label == "VU1 AOT" else "GT4_VU0_GENERATED_DIR"
+        folder_path = arg_path(os.environ.get(env_name), private / folder)
         main = folder_path / f"{prefix}.cpp"
         parts = list(folder_path.glob(f"{prefix}_*.cpp")) if folder_path.is_dir() else []
         r.record(label, main.is_file(),
                  f"principal + {len(parts)} partes" if main.is_file()
-                 else "arquivo principal de codigo gerado ausente")
+                 else f"falta {prefix}.cpp; informe {env_name} se ja gerou o VU")
 
     manifest = arg_path(os.environ.get("GT4_EE_UNITS_MANIFEST"),
                         private / "slice408-ee-v200" / "v200-units-rc14b.camera360-units.json")
