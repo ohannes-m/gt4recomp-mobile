@@ -20,6 +20,9 @@ import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 DONOR_COMMIT = "1b4808793a12c45125262fd2d5f50a9ec9f7c020"
+# The Android-specific entry is a new, reviewed variant rather than
+# the historical manually edited slice200 entry. Pin it separately.
+ANDROID_PORT_MAIN_SHA256 = ""
 
 # output directory name, generating script, extra CLI flags, pin manifest
 DERIVATIONS = (
@@ -87,6 +90,11 @@ def derive(assets_root: pathlib.Path, name: str, script: str, flags: tuple[str, 
     command = [sys.executable, str(REPO / "scripts" / script),
                str(output), "--assets-root", str(assets_root), *flags]
     subprocess.run(command, check=True, stdout=subprocess.DEVNULL, timeout=120)
+    if field == "PORT":
+        subprocess.run([
+            sys.executable, str(REPO / "scripts" / "prepare_android_port_main.py"),
+            str(output), "--assets-root", str(assets_root),
+        ], check=True, timeout=120)
     if manifest is None:
         # The smaller IPU/SPU2/memory-card tools are pinned to exact donor
         # hashes and produce a receipt listing their source hash.
@@ -102,7 +110,10 @@ def derive(assets_root: pathlib.Path, name: str, script: str, flags: tuple[str, 
 
     pinned = json.loads((REPO / "docs" / "inputs" / manifest).read_text(encoding="utf-8"))
     if field == "PORT":
-        expected_sources = pinned["inputs"]["PORT"]
+        expected_sources = dict(pinned["inputs"]["PORT"])
+        if not ANDROID_PORT_MAIN_SHA256:
+            raise ValueError(f"Android port main needs explicit pin: {sha256(output / 'main.cpp')}")
+        expected_sources["main.cpp"] = ANDROID_PORT_MAIN_SHA256
     else:
         expected_sources = pinned["source_sha256"]
 
