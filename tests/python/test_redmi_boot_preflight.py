@@ -64,6 +64,36 @@ class ReadinessTests(unittest.TestCase):
                 module.check_staged(invalid)
                 self.assertGreater(invalid.bad, 0)
 
+    def test_unknown_ee_baseline_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            unit_dir = Path(directory)
+            for name in module.EE_HOOK_INPUT_PINS:
+                (unit_dir / name).write_bytes(b"synthetic generated C++ sample")
+            r = module.Report()
+            module.check_hook_ee(r, unit_dir, None)
+            self.assertEqual((r.good, r.bad), (0, 1))
+
+    def test_hook_manifest_checks_six_source_hashes(self) -> None:
+        import hashlib
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            rows = []
+            for name in module.EE_HOOK_INPUT_PINS:
+                data = (name + " synthetic hook text").encode()
+                (root / name).write_bytes(data)
+                rows.append({"unit": name, "sha256_after":
+                             hashlib.sha256(data).hexdigest()})
+            manifest = root / "hooks.json"
+            manifest.write_text(json.dumps({"units": rows}), encoding="utf-8")
+            good = module.Report()
+            module.check_hook_ee(good, root, manifest)
+            self.assertEqual((good.good, good.bad), (1, 0))
+            (root / rows[0]["unit"]).write_bytes(b"tampered")
+            bad = module.Report()
+            module.check_hook_ee(bad, root, manifest)
+            self.assertEqual((bad.good, bad.bad), (0, 1))
+
     def test_no_signing_file_blocks_apk(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             with patch.object(module, "REPO", Path(directory)), patch.dict(
