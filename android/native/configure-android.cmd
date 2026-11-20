@@ -21,6 +21,11 @@ if "%GT4_EE_UNITS_MANIFEST%"=="" set "GT4_EE_UNITS_MANIFEST=%GT4_ASSETS_ROOT%/pr
 if "%GT4_VULKAN_INCLUDE%"=="" set "GT4_VULKAN_INCLUDE=C:/VulkanSDK/1.4.341.1/Include"
 if "%GT4_EE_UNITS_DIR%"=="" (echo GT4_EE_UNITS_DIR is required & exit /b 2)
 if "%GT4_HW_SHADER_CPP_DIR%"=="" (echo GT4_HW_SHADER_CPP_DIR is required & exit /b 2)
+rem Reuse already-generated PRIVATE EE/VU sources without moving or re-extracting.
+rem User-provided paths override the original pinned capsule layout; all CMake
+rem source and hash checks remain mandatory (no bypass of rc14b hook hashes).
+if not defined GT4_VU1_GENERATED_DIR set "GT4_VU1_GENERATED_DIR=%GT4_ASSETS_ROOT%/private/slice397-vu1-gen"
+if not defined GT4_VU0_GENERATED_DIR set "GT4_VU0_GENERATED_DIR=%GT4_ASSETS_ROOT%/private/slice394-v200-vu0-gen"
 set "A=%GT4_ASSETS_ROOT%"
 cmake -S "%~dp0." -B "%OUT%" -G Ninja -DCMAKE_BUILD_TYPE=Release ^
  -DCMAKE_TOOLCHAIN_FILE="%GT4_ANDROID_NDK%\build\cmake\android.toolchain.cmake" ^
@@ -34,8 +39,8 @@ cmake -S "%~dp0." -B "%OUT%" -G Ninja -DCMAKE_BUILD_TYPE=Release ^
  -DGT4_MEMCARD_RUNTIME_SOURCE=%A%/private/slice200-memcard-runtime ^
  -DGT4_IPU_RUNTIME_SOURCE=%A%/private/slice365-ipu-fast-runtime ^
  -DGT4_SPU2_RUNTIME_SOURCE=%A%/private/slice396-spu2-runtime ^
- -DGT4_VU1_GENERATED_DIR=%A%/private/slice397-vu1-gen ^
- -DGT4_VU0_GENERATED_DIR=%A%/private/slice394-v200-vu0-gen ^
+ "-DGT4_VU1_GENERATED_DIR=%GT4_VU1_GENERATED_DIR%" ^
+ "-DGT4_VU0_GENERATED_DIR=%GT4_VU0_GENERATED_DIR%" ^
  -DGT4_HW_SHADER_CPP_DIR=%GT4_HW_SHADER_CPP_DIR% ^
  -DGT4_VULKAN_INCLUDE=%GT4_VULKAN_INCLUDE% ^
  -DGT4_SDL3_ANDROID_AAR_DIR=%A%/private/tooling/sdl3-3.4.18-android/aar ^
