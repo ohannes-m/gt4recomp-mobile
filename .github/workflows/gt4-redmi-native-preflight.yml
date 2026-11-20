@@ -7,6 +7,7 @@ on:
       - tools/redmi_boot_preflight.py
       - tests/python/test_redmi_boot_preflight.py
       - android/redmi-native.cmd
+      - android/native/configure-android.cmd
       - android/redmi-local-assets.ps1
       - android/verificar-arquivos-gt4.cmd
       - android/integrar-ee-vu-privado.cmd
@@ -61,6 +62,10 @@ jobs:
         run: |
           set -euo pipefail
           grep -F 'USE_VULKAN=OFF' android/redmi-native.cmd
+          grep -F '"-DGT4_EE_UNITS_DIR=%GT4_EE_UNITS_DIR%"' android/native/configure-android.cmd
+          grep -F '"-DGT4_EE_UNITS_MANIFEST=%GT4_EE_UNITS_MANIFEST%"' android/native/configure-android.cmd
+          grep -F '"-DGT4_VU0_GENERATED_DIR=%GT4_VU0_GENERATED_DIR%"' android/native/configure-android.cmd
+          grep -F '"-DGT4_VU1_GENERATED_DIR=%GT4_VU1_GENERATED_DIR%"' android/native/configure-android.cmd
           grep -F 'USE_OPENGL=ON' android/redmi-native.cmd
           grep -F 'android\stage-native-libs.cmd' android/redmi-native.cmd
           grep -F 'android\stage-armsx2gs.cmd' android/redmi-native.cmd
