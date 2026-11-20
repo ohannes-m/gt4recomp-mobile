@@ -47,6 +47,19 @@ def sha256(path: pathlib.Path) -> str:
     return h.hexdigest()
 
 
+def matches_pinned_output(path: pathlib.Path, expected: str) -> bool:
+    """Windows write_text(newline=None) emits CRLF; Actions runners use LF.
+
+    Verify the *exact recorded SHA-256* for either raw output or the Windows
+    line-ending form. No source transforms or pin weakening are performed.
+    """
+    if sha256(path) == expected:
+        return True
+    raw = path.read_bytes()
+    normalized = raw.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+    return hashlib.sha256(normalized).hexdigest() == expected
+
+
 def verified_donor(assets_root: pathlib.Path) -> pathlib.Path:
     checkout = assets_root / "private" / "references" / "ps2-web-recomp"
     if not checkout.is_dir():
@@ -97,7 +110,7 @@ def derive(assets_root: pathlib.Path, name: str, script: str, flags: tuple[str, 
         raise ValueError(f"no pinned sources for {name}")
     for filename, expected in sorted(expected_sources.items()):
         actual_file = output / filename
-        if not actual_file.is_file() or sha256(actual_file) != expected:
+        if not actual_file.is_file() or not matches_pinned_output(actual_file, expected):
             raise ValueError(f"{name}: pinned SHA-256 mismatch in {filename}")
 
     if field is None:
@@ -105,7 +118,7 @@ def derive(assets_root: pathlib.Path, name: str, script: str, flags: tuple[str, 
         if not receipt.is_file():
             raise ValueError(f"{name}: missing receipt runtime.json")
         expected = pinned.get("receipt_sha256")
-        if expected and sha256(receipt) != expected:
+        if expected and not matches_pinned_output(receipt, expected):
             raise ValueError(f"{name}: pinned runtime.json SHA-256 mismatch")
     print(f"PUBLIC_RUNTIME_PIN_PASS {name} ({len(expected_sources)} sources)")
 
