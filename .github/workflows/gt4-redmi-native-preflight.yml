@@ -141,6 +141,9 @@ jobs:
           set -euo pipefail
           mkdir -p private/references/ps2-web-recomp
           git -C private/references/ps2-web-recomp init -q
+          # Pins were recorded from a Windows donor worktree. Preserve the pinned
+          # checkout's CRLF form on Linux as well; Git still normalizes index EOL.
+          git -C private/references/ps2-web-recomp config core.autocrlf true
           git -C private/references/ps2-web-recomp remote add origin https://github.com/snuri00/ps2-web-recomp.git
           git -C private/references/ps2-web-recomp fetch --filter=blob:none --depth=1 origin 1b4808793a12c45125262fd2d5f50a9ec9f7c020
           git -C private/references/ps2-web-recomp checkout -q --detach FETCH_HEAD
