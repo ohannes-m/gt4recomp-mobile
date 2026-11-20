@@ -155,6 +155,8 @@ def check_private(r: Report, root: Path, units: Path | None,
         "prefab/modules/SDL3-Headers/include/SDL3/SDL.h",
         ".git-hash",
     ))
+    r.files("SDL3 AAR para Gradle", private / "tooling" / "sdl3-3.4.18-android" / "pkg",
+            ("SDL3-3.4.18.aar",))
     sdl_pin = aar / ".git-hash"
     if sdl_pin.is_file():
         rev = sdl_pin.read_text(encoding="utf-8", errors="replace").strip()
@@ -180,6 +182,66 @@ def check_tools(r: Report, ndk: Path | None, vulkan: Path | None) -> None:
                  "nao esta no PATH" if not shutil.which(command) else "")
 
 
+def check_apk_tools(r: Report) -> None:
+    """Required BEFORE compiling the full game; no secrets are printed."""
+    sdk_text = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT")
+    local = os.environ.get("LOCALAPPDATA")
+    sdk = arg_path(sdk_text, Path(local, "Android", "Sdk") if local else None)
+    r.files("Android SDK 36", sdk, ("platforms/android-36/android.jar",))
+    r.files("Android build-tools 36.1.0", sdk,
+            ("build-tools/36.1.0/zipalign.exe",))
+    java = arg_path(os.environ.get("JAVA_HOME"))
+    r.files("JDK 21 para Gradle", java, ("bin/java.exe",))
+    r.record("Cargo Tauri CLI", bool(shutil.which("cargo-tauri")),
+             "cargo install tauri-cli (v2)" if not shutil.which("cargo-tauri") else "")
+    signing = arg_path(os.environ.get("GT4_ANDROID_SIGNING"))
+    r.record("Assinatura APK privada", bool(signing and signing.is_file()),
+             "defina GT4_ANDROID_SIGNING com arquivo .properties existente"
+             if not signing or not signing.is_file() else "arquivo local encontrado; segredo nao inspecionado")
+
+    # The game renderer is shipped separately as a GPL-licensed library.
+    assets = REPO / "third_party" / "armsx2" / "bin" / "resources"
+    r.files("ARMSX2 recursos GLES", assets, (
+        "GameIndex.yaml",
+        "shaders/common/fxaa.fx",
+        "shaders/opengl/merge.glsl",
+        "fonts/RobotoMono-Medium.ttf",
+    ))
+    r.files("Launcher Android do GT4", REPO / "launcher" / "crates" / "gt4l-tauri",
+            ("tauri.android.conf.json", "gen/android/app/build.gradle.kts",
+             "gen/android/app/src/main/AndroidManifest.xml"))
+
+    rustup = shutil.which("rustup")
+    if not rustup:
+        r.record("Rust Android ARM64 target", False, "rustup nao encontrado")
+    else:
+        try:
+            proc = subprocess.run([rustup, "target", "list", "--installed"],
+                                  capture_output=True, text=True, timeout=10, check=True)
+            r.record("Rust Android ARM64 target",
+                     "aarch64-linux-android" in proc.stdout.splitlines(),
+                     "rustup target add aarch64-linux-android"
+                     if "aarch64-linux-android" not in proc.stdout.splitlines()
+                     else "")
+        except (OSError, subprocess.SubprocessError):
+            r.record("Rust Android ARM64 target", False, "impossivel verificar rustup")
+
+
+def check_staged(r: Report) -> None:
+    """Verify real Android artifact inputs before cargo builds the APK."""
+    app = REPO / "launcher" / "crates" / "gt4l-tauri" / "gen" / "android" / "app"
+    r.files("Bibliotecas ARM64", app / "src" / "main" / "jniLibs" / "arm64-v8a",
+            ("libgt4.so", "libgt4gs.so", "libSDL3.so"))
+    r.files("AAR SDL3 no launcher", app / "libs", ("SDL3-3.4.18.aar",))
+    r.files("Recursos ARMSX2 dentro do APK", app / "src" / "main" / "assets" /
+            "armsx2gs" / "resources", (
+                "GameIndex.yaml",
+                "shaders/common/fxaa.fx",
+                "shaders/opengl/merge.glsl",
+                "fonts/RobotoMono-Medium.ttf",
+            ))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Verifica insumos privados e ferramentas do verdadeiro libgt4.so. Offline e somente leitura.")
@@ -193,6 +255,10 @@ def main() -> int:
                         help="NDK Android 26.1 (ou GT4_ANDROID_NDK).")
     parser.add_argument("--vulkan-include", type=Path,
                         help="Pasta Include do Vulkan SDK (ou GT4_VULKAN_INCLUDE/VULKAN_SDK).")
+    parser.add_argument("--apk-tools", action="store_true",
+                        help="Verifica tambem o SDK/Java/Rust/assinatura para gerar APK local.")
+    parser.add_argument("--staged", action="store_true",
+                        help="Verifica apenas bibliotecas e recursos ja staged para empacotar.")
     args = parser.parse_args()
 
     assets = (args.assets_root.resolve() if args.assets_root else default_assets_root())
@@ -204,16 +270,26 @@ def main() -> int:
     print("GT4Recomp - Redmi / BUILD REAL (somente leitura)")
     print("Nenhum teste de PanVK, instalacao APK, root, ADB ou envio de arquivos.\n")
     r = Report()
-    check_source(r)
-    check_private(r, assets, units, shaders)
-    check_tools(r, ndk, vulkan)
+    if args.staged:
+        check_staged(r)
+    else:
+        check_source(r)
+        check_private(r, assets, units, shaders)
+        check_tools(r, ndk, vulkan)
+        if args.apk_tools:
+            check_apk_tools(r)
     print(f"\nRESULTADO: {r.good} OK, {r.bad} FALTANDO")
     if r.bad:
-        print("BLOQUEADO: primeiro obter/completar os insumos privados da propria copia do jogo.")
+        print("BLOQUEADO: faltam insumos reais ou ferramentas exigidas nesta etapa.")
         print("Nao envie ISO, ELF, unidades recompiladas, saves ou chaves ao GitHub.")
         return 2
-    print("PRONTO PARA CONFIGURAR libgt4.so (nao significa que o jogo ja funciona).")
-    print("Proximo passo: android/native/configure-android.cmd arm64-v8a <build-dir>")
+    if args.staged:
+        print("BIBLIOTECAS E RECURSOS STAGED: arquivos presentes; ainda nao prova boot.")
+    elif args.apk_tools:
+        print("PRONTO PARA INICIAR O BUILD LOCAL DO APK (ainda nao prova jogo rodando).")
+    else:
+        print("PRONTO PARA CONFIGURAR libgt4.so (nao significa que o jogo ja funciona).")
+        print("Proximo passo: android/redmi-native.cmd --build-native")
     return 0
 
 
