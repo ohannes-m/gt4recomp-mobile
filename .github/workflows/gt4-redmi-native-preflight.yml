@@ -7,6 +7,9 @@ on:
       - tools/redmi_boot_preflight.py
       - tests/python/test_redmi_boot_preflight.py
       - android/redmi-native.cmd
+      - android/redmi-local-assets.ps1
+      - android/verificar-arquivos-gt4.cmd
+      - tests/powershell/Test-RedmiLocalAssets.ps1
       - android/REDMI-REAL-GAME-BOOT.md
       - .github/workflows/gt4-redmi-native-preflight.yml
   workflow_dispatch:
@@ -82,6 +85,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Validate local EE/VU files are recognized without inspecting content
+        shell: pwsh
+        run: |
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\powershell\Test-RedmiLocalAssets.ps1
+          if ($LASTEXITCODE -ne 0) {
+            throw "Existing-local-assets fixture check failed"
+          }
       - name: Check that the real-game batch script fails closed
         shell: pwsh
         run: |
