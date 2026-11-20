@@ -96,3 +96,6 @@ jobs:
             throw "Expected --build-apk to block without private inputs (2), got $build"
           }
           Write-Host "WINDOWS_REAL_GAME_PRIVATE_GATE_PASS"
+          # GitHub pwsh propagates the previous expected native exit code
+          # unless we explicitly end the validating script successfully.
+          exit 0
