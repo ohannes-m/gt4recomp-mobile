@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "title": "Android donor main.cpp - reviewed MIT-only entry variant",
+  "donor_commit": "1b4808793a12c45125262fd2d5f50a9ec9f7c020",
+  "parent": "slice262-frame-cost-runtime.json (three unchanged slice200-port files)",
+  "derivation": [
+    "scripts/prepare_external_vulkan.py --gs-stream-hooks",
+    "scripts/prepare_android_port_main.py"
+  ],
+  "source_sha256": "0f5ae21dc91eaded12ad6ba56280b491ebd6a39df99601c2055e9b3f864c9033",
+  "canonical_newlines": "LF",
+  "required_semantics": [
+    "--portable-check calls install::run_portable_check before the game starts",
+    "headless run calls ps2::iop::sio2::flush_cards_now once after emulate",
+    "preserves existing PS2_GS=gpu fallback and all donor CLI branches"
+  ],
+  "source_origin": "public pinned ps2-web-recomp MIT donor, no game data",
+  "android_only": true,
+  "historical_pin_unchanged": true
+}
