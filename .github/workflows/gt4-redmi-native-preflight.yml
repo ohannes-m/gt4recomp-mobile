@@ -15,6 +15,7 @@ on:
       - android/redmi-local-assets.ps1
       - android/verificar-arquivos-gt4.cmd
       - android/integrar-ee-vu-privado.cmd
+      - android/preparar-runtime-publico.cmd
       - android/EE-VU-PRIVADO-INTEGRACAO.md
       - tests/powershell/Test-RedmiLocalAssets.ps1
       - android/REDMI-REAL-GAME-BOOT.md
@@ -172,3 +173,32 @@ jobs:
           test ! -f private/gt4.iso
           test ! -f libgt4.so
           echo "ONLY_PUBLIC_RUNTIME_PINNED_SOURCES_VALIDATED"
+
+
+  windows-public-runtime:
+    name: Reconstruct public MIT runtime on Windows without GT4 assets
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare public PS2 runtime from pinned donor and verify source hashes
+        shell: pwsh
+        run: |
+          & cmd.exe /d /c "android\preparar-runtime-publico.cmd"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Public runtime bootstrap failed: $LASTEXITCODE"
+          }
+          Write-Host "WINDOWS_PUBLIC_RUNTIME_REBUILT_PASS"
+      - name: Recheck existing runtime without modifying private capsules
+        shell: pwsh
+        run: |
+          & cmd.exe /d /c "android\preparar-runtime-publico.cmd"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Public runtime idempotent check failed: $LASTEXITCODE"
+          }
+          if (Test-Path "libgt4.so") {
+            throw "Unexpected game binary in public-only job"
+          }
+          Write-Host "WINDOWS_PUBLIC_RUNTIME_RECHECK_PASS"
