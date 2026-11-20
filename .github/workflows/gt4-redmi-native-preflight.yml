@@ -9,6 +9,8 @@ on:
       - android/redmi-native.cmd
       - android/redmi-local-assets.ps1
       - android/verificar-arquivos-gt4.cmd
+      - android/integrar-ee-vu-privado.cmd
+      - android/EE-VU-PRIVADO-INTEGRACAO.md
       - tests/powershell/Test-RedmiLocalAssets.ps1
       - android/REDMI-REAL-GAME-BOOT.md
       - .github/workflows/gt4-redmi-native-preflight.yml
@@ -92,6 +94,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Existing-local-assets fixture check failed"
           }
+      - name: Verify local EE/VU integration rejects missing private archive
+        shell: pwsh
+        run: |
+          & cmd.exe /d /c 'android\integrar-ee-vu-privado.cmd "Z:\GT4_MISSING_PRIVATE_INPUTS" --check'
+          if ($LASTEXITCODE -ne 2) {
+            throw "Expected incomplete private package to stop (2), got $LASTEXITCODE"
+          }
+          Write-Host "EE_VU_PRIVATE_PACKAGE_GATE_PASS"
+          exit 0
       - name: Check that the real-game batch script fails closed
         shell: pwsh
         run: |
