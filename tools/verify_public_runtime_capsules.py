@@ -20,9 +20,9 @@ import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 DONOR_COMMIT = "1b4808793a12c45125262fd2d5f50a9ec9f7c020"
-# The Android-specific entry is a new, reviewed variant rather than
-# the historical manually edited slice200 entry. Pin it separately.
-ANDROID_PORT_MAIN_SHA256 = ""
+# The Android-specific entry is a reviewed variant, with a separate manifest
+# so that the historical manually edited Windows slice200 entry stays pinned.
+PORT_MAIN_PIN = REPO / "docs" / "inputs" / "android-redmi-public-port-main.json"
 
 # output directory name, generating script, extra CLI flags, pin manifest
 DERIVATIONS = (
@@ -111,9 +111,10 @@ def derive(assets_root: pathlib.Path, name: str, script: str, flags: tuple[str, 
     pinned = json.loads((REPO / "docs" / "inputs" / manifest).read_text(encoding="utf-8"))
     if field == "PORT":
         expected_sources = dict(pinned["inputs"]["PORT"])
-        if not ANDROID_PORT_MAIN_SHA256:
-            raise ValueError(f"Android port main needs explicit pin: {sha256(output / 'main.cpp')}")
-        expected_sources["main.cpp"] = ANDROID_PORT_MAIN_SHA256
+        main_pin = json.loads(PORT_MAIN_PIN.read_text(encoding="utf-8"))
+        if main_pin["donor_commit"] != DONOR_COMMIT:
+            raise ValueError("Android port main donor revision differs from pinned runtime")
+        expected_sources["main.cpp"] = main_pin["source_sha256"]
     else:
         expected_sources = pinned["source_sha256"]
 
