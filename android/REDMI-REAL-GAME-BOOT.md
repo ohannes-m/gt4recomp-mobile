@@ -23,22 +23,65 @@ O comando acima e somente leitura. Mostra [OK] ou [FALTA] para o runtime PS2 fix
 
 Se retornar FALTA, o proximo trabalho e resolver os arquivos/fontes; um novo teste PanVK nao ajudaria.
 
-## Passo 2: compilar a biblioteca real para ARM64
+## Passo 2: compilar e empacotar o jogo de verdade (local)
 
-Somente com todos os insumos presentes:
+Quando os insumos estiverem disponiveis, execute no Windows:
+
+~~~bat
+android\redmi-native.cmd --build-apk
+~~~
+
+Este comando faz o seguinte, parando ao primeiro erro e sem tocar no celular:
+
+1. Valida os arquivos privados EE/VU, runtime, CoreGS e SDL3.
+2. Confirma ferramentas para o APK: Android SDK 36, NDK 26.1, Java, Rust target
+   aarch64-linux-android, Tauri CLI e o arquivo privado GT4_ANDROID_SIGNING.
+3. Compila libgt4.so de verdade para arm64-v8a e faz staging do SDL3.
+4. Compila libgt4gs.so para arm64-v8a com o ARMSX2 GS, OpenGL ES ligado,
+   Vulkan desligado e sem JIT. Nenhum PanVK e instalado ou necessario aqui.
+5. Faz staging de GameIndex.yaml, shaders e fontes do ARMSX2.
+6. Valida que as tres bibliotecas (libgt4.so, libgt4gs.so, libSDL3.so), o SDL3
+   AAR e os recursos graficos estao presentes.
+7. Empacota o launcher com cargo tauri android build, usando apenas sua chave
+   de assinatura local (nunca presente no GitHub).
+
+O candidato gerado fica em:
+
+~~~text
+build\redmi-output\GT4Recomp-private-redmi-arm64.apk
+~~~
+
+O APK nao e enviado ao GitHub nem instalado automaticamente. Dependencias
+publicas das ferramentas Rust/Gradle ainda podem precisar ser baixadas durante
+o build no PC, mas arquivos do jogo nao sao enviados.
+
+Para compilar somente a biblioteca principal (sem ARMSX2 e APK):
 
 ~~~bat
 android\redmi-native.cmd --build-native
 ~~~
 
-O comando compila libgt4.so para ARM64 e faz o staging dela e do SDL3. Para evitar esgotar RAM, usa um processo de compilacao por vez por padrao, ajustavel pela variavel CMAKE_BUILD_PARALLEL_LEVEL. Ainda nao e um APK jogavel.
+### Assinatura e componentes
 
-## Passo 3: integrar GS Android e APK
+A variavel de ambiente GT4_ANDROID_SIGNING deve apontar para o arquivo .properties
+com sua chave. O script nao cria, le nem mostra segredos. A chave deve ser a mesma
+utilizada em instalacoes anteriores para o Android permitir a atualizacao.
 
-Compilar libgt4gs.so com android/armsx2gs e fazer staging com android/stage-armsx2gs.cmd, incluindo GameIndex.yaml, shaders e fontes. Empacotar o launcher Tauri e assinar o APK conforme android/README.md.
+O primeiro build e local e experimental. Falhar na compilacao nao e falha do
+driver PanVK. Problemas na inicializacao real devem ser diagnosticados com o
+log do proprio jogo, nao com novos cubes demonstrativos.
 
-O launcher Android ja oferece ARMSX2 como padrao e sua regra Auto escolhe a API a partir da GPU. No Redmi, o primeiro boot segue GLES, sem forcar PanVK.
+## Passo 3: verificar no telefone somente quando houver APK real
 
-Todo o material derivado do jogo (ISO, ELF, unidades EE/VU, capsulas privadas, saves e chave de assinatura) deve ficar local. NAO colocar esses arquivos em GitHub, nem em logs ou mensagens.
+O launcher deve abrir, permitir a selecao da propria ISO e iniciar o GT4 pelo
+GameActivity. A GPU Mali G76 usara o caminho GLES do ARMSX2 para o primeiro boot.
+Nao forcar Vulkan experimental nessa etapa.
 
-GATE DE CONCLUSAO: um APK real empacotado e assinado, launcher iniciado, ISO selecionada pelo usuario e GT4 alcancando menus no Redmi. Nada disso esta comprovado so por ter compilado o preflight.
+Todo o material derivado do jogo (ISO, ELF, unidades EE/VU, capsulas privadas,
+saves e chave de assinatura) deve ficar local. NAO colocar esses arquivos em
+GitHub nem em mensagens.
+
+GATE DE CONCLUSAO: APK gerado localmente, launcher aberto, disco selecionado pelo
+usuario e GT4 alcancando os menus no Redmi. Nenhum dos testes PanVK anteriores
+comprova esse gate. O workflow do GitHub apenas valida a logica do preflight,
+porque os arquivos privados nao estao presentes na nuvem.
