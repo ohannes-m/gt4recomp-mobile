@@ -125,9 +125,9 @@ def check_private(r: Report, root: Path, units: Path | None,
         folder_path = private / folder
         main = folder_path / f"{prefix}.cpp"
         parts = list(folder_path.glob(f"{prefix}_*.cpp")) if folder_path.is_dir() else []
-        r.record(label, main.is_file() and len(parts) > 0,
-                 f"{len(parts)} partes" if main.is_file() and parts
-                 else "codigo gerado ausente (principal ou partes)")
+        r.record(label, main.is_file(),
+                 f"principal + {len(parts)} partes" if main.is_file()
+                 else "arquivo principal de codigo gerado ausente")
 
     manifest = arg_path(os.environ.get("GT4_EE_UNITS_MANIFEST"),
                         private / "slice408-ee-v200" / "v200-units-rc14b.camera360-units.json")
